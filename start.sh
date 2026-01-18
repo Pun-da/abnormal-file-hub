@@ -39,27 +39,30 @@ fi
 # Start Django
 echo ""
 echo -e "${BLUE}[2/4] Starting Django Backend...${NC}"
-cd backend
-if [ ! -d "venv" ]; then
+if [ ! -d "backend/venv" ]; then
     echo -e "${YELLOW}Creating virtual environment...${NC}"
+    cd backend
     python3 -m venv venv
+    cd ..
 fi
-source venv/bin/activate
-cd ..
 
 mkdir -p logs
+
+# Kill all existing Django processes more aggressively
+pkill -f "manage.py runserver" 2>/dev/null || true
 kill $(lsof -ti:8000) 2>/dev/null || true
-cd backend
-nohup python manage.py runserver 0.0.0.0:8000 > ../logs/django.log 2>&1 &
-DJANGO_PID=$!
-echo $DJANGO_PID > ../logs/django.pid
-cd ..
 sleep 2
+
+# Start Django with explicit bash subshell to ensure venv persists
+bash -c "cd backend && source venv/bin/activate && nohup python manage.py runserver 0.0.0.0:8000 > ../logs/django.log 2>&1 & echo \$!" > logs/django.pid
+DJANGO_PID=$(cat logs/django.pid)
+sleep 8
 
 if lsof -ti:8000 >/dev/null 2>&1; then
     echo -e "${GREEN}✓ Django running (PID: $DJANGO_PID)${NC}"
 else
-    echo -e "${RED}✗ Django failed to start${NC}"
+    echo -e "${RED}✗ Django failed to start - check logs/django.log${NC}"
+    cat logs/django.log | tail -20
     exit 1
 fi
 
