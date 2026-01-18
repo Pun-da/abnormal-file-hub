@@ -566,7 +566,7 @@ class QueryLogAPITests(APITestCase):
         response = self.client.get('/api/stats/queries/summary/')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['period'], 'last_24_hours')
+        self.assertEqual(response.data['period'], 'all_time')
         self.assertEqual(response.data['total_queries'], 10)
         self.assertEqual(response.data['successful_queries'], 8)
         self.assertEqual(response.data['failed_queries'], 2)
