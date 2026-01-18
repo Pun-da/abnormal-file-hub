@@ -10,8 +10,11 @@ __pycache__/
 /backend/env/
 /backend/media/
 /backend/staticfiles/
+/backend/data/
+/backend/contracts
 .env
 *.log
+logs/
 
 # Node / React
 node_modules/

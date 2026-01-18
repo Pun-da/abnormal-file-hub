@@ -1,32 +1,99 @@
+version: '3.8'
+
 services:
+  # Redis for Celery message broker
+  redis:
+    image: redis:7-alpine
+    container_name: rag_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # PostgreSQL database (optional - can use SQLite)
+  # Uncomment if you want to use PostgreSQL instead of SQLite
+  # db:
+  #   image: postgres:15-alpine
+  #   container_name: rag_db
+  #   environment:
+  #     POSTGRES_DB: file_vault
+  #     POSTGRES_USER: vault_user
+  #     POSTGRES_PASSWORD: vault_password
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+
+  # Django backend
   backend:
-    build: 
+    build:
       context: ./backend
       dockerfile: Dockerfile
+    container_name: rag_backend
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py init_rag &&
+             gunicorn core.wsgi:application --bind 0.0.0.0:8000 --workers 3"
+    volumes:
+      - ./backend:/app
+      - media_data:/app/media
+      - chromadb_data:/app/data/chromadb
     ports:
       - "8000:8000"
-    volumes:
-      - backend_storage:/app/media
-      - backend_static:/app/staticfiles
-      - backend_data:/app/data
     environment:
       - DJANGO_DEBUG=True
-      - DJANGO_SECRET_KEY=insecure-dev-only-key
-    restart: always
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - RAG_ASYNC_INDEXING=True
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/files/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
+  # Celery worker for background RAG indexing
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: rag_celery_worker
+    command: celery -A core worker --loglevel=info --concurrency=2
+    volumes:
+      - ./backend:/app
+      - media_data:/app/media
+      - chromadb_data:/app/data/chromadb
+    environment:
+      - DJANGO_DEBUG=True
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - redis
+      - backend
+
+  # Frontend (React)
   frontend:
-    build: 
+    build:
       context: ./frontend
       dockerfile: Dockerfile
+    container_name: rag_frontend
     ports:
       - "3000:3000"
     environment:
-      - REACT_APP_API_URL=http://localhost:8000/api
+      - REACT_APP_API_URL=http://localhost:8000
     depends_on:
       - backend
-    restart: always
 
 volumes:
-  backend_storage:
-  backend_static:
-  backend_data: 
+  redis_data:
+  media_data:
+  chromadb_data:
+  # postgres_data:  # Uncomment if using PostgreSQL
