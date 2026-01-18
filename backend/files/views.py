@@ -1,10 +1,12 @@
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
+from rest_framework.pagination import LimitOffsetPagination
 from django.conf import settings
 from contracts.models import File, FileContent
 from .serializers import FileSerializer
 from .services import DeduplicationService
+from .filters import FileFilter
 
 
 def get_max_upload_size():
@@ -21,18 +23,46 @@ def format_file_size(size_bytes):
     return f"{size_bytes:.1f} TB"
 
 
+class FilePagination(LimitOffsetPagination):
+    """
+    Custom pagination for file listings.
+    
+    Per search_core_algorithm.md:
+    - Default limit: 20
+    - Maximum limit: 100
+    """
+    default_limit = 20
+    max_limit = 100
+
+
 class FileViewSet(viewsets.ModelViewSet):
     """
     ViewSet for file operations with deduplication support.
     
     Provides:
-    - List files with pagination
+    - List files with pagination and filtering
     - Upload files with automatic deduplication
     - Delete files with reference counting
     - Storage metrics endpoint
+    
+    Filtering (all use AND logic):
+    - search: Case-insensitive filename search
+    - file_type: Exact MIME type match
+    - type_category: MIME prefix (e.g., 'image')
+    - size_min/size_max: File size range in bytes
+    - date_from/date_to: Upload date range (ISO 8601)
+    
+    Sorting:
+    - Default: -uploaded_at (newest first)
+    - Allowed: uploaded_at, original_filename, content__size, file_type
+    - Prefix with '-' for descending
     """
     queryset = File.objects.select_related('content').all()
     serializer_class = FileSerializer
+    filterset_class = FileFilter
+    pagination_class = FilePagination
+    ordering_fields = ['uploaded_at', 'original_filename', 'content__size', 'file_type']
+    ordering = ['-uploaded_at']  # Default ordering
     
     def get_queryset(self):
         """Optimize queries with select_related to avoid N+1."""
