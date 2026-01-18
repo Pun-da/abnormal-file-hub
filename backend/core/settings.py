@@ -41,6 +41,7 @@ INSTALLED_APPS = [
   "rest_framework",
   "django_filters",
   "corsheaders",
+  "django_celery_results",  # For Celery result storage
   "contracts",  # Shared data contract (symlinked across worktrees)
   "files",
 ]
@@ -164,3 +165,18 @@ CORS_ALLOW_CREDENTIALS = True
 # File upload settings
 FILE_UPLOAD_MAX_SIZE = int(os.environ.get('FILE_UPLOAD_MAX_SIZE', 10 * 1024 * 1024))  # 10MB default
 DATA_UPLOAD_MAX_MEMORY_SIZE = FILE_UPLOAD_MAX_SIZE
+
+# Celery Configuration
+CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes max per task
+
+# RAG / Vector Store Configuration
+CHROMADB_PERSIST_DIRECTORY = os.path.join(BASE_DIR, 'data', 'chromadb')
+RAG_ASYNC_INDEXING = True  # Enable async indexing for large files
+RAG_LARGE_FILE_THRESHOLD = 1 * 1024 * 1024  # 1MB - files larger than this are indexed async

@@ -6,9 +6,12 @@ Handles file hashing, duplicate detection, and content-addressable storage.
 
 import hashlib
 import os
+import logging
 from django.db import transaction
 from django.conf import settings
 from contracts.models import File, FileContent
+
+logger = logging.getLogger(__name__)
 
 
 CHUNK_SIZE = 65536  # 64KB for memory-efficient hashing
@@ -84,6 +87,9 @@ class DeduplicationService:
                     content=existing_content
                 )
                 
+                # Trigger RAG indexing (even for duplicates, as metadata differs)
+                cls._trigger_rag_indexing(file_record)
+                
                 return file_record, True
             
             else:
@@ -108,6 +114,9 @@ class DeduplicationService:
                     file_type=file_type,
                     content=file_content
                 )
+                
+                # Trigger RAG indexing
+                cls._trigger_rag_indexing(file_record)
                 
                 return file_record, False
     
@@ -155,6 +164,8 @@ class DeduplicationService:
         Returns:
             dict: Deletion result with physical_deleted flag
         """
+        file_id = str(file_record.id)
+        
         with transaction.atomic():
             content = file_record.content
             
@@ -177,11 +188,16 @@ class DeduplicationService:
                 # Clean up empty CAS directories
                 cls._cleanup_empty_directories(file_path)
                 
-                return {'physical_deleted': True}
+                result = {'physical_deleted': True}
             else:
                 # Other references exist: just save the updated count
                 content.save(update_fields=['reference_count'])
-                return {'physical_deleted': False}
+                result = {'physical_deleted': False}
+        
+        # Trigger RAG cleanup (outside transaction)
+        cls._trigger_rag_deletion(file_id)
+        
+        return result
     
     @staticmethod
     def get_storage_metrics() -> dict:
@@ -226,3 +242,70 @@ class DeduplicationService:
             'storage_saved': storage_saved,
             'deduplication_ratio': deduplication_ratio
         }
+    
+    @staticmethod
+    def _trigger_rag_indexing(file_record: File) -> None:
+        """
+        Trigger RAG indexing for a file (async if configured).
+        
+        Args:
+            file_record: File instance to index
+        """
+        try:
+            # Check if async indexing is enabled
+            async_enabled = getattr(settings, 'RAG_ASYNC_INDEXING', True)
+            large_file_threshold = getattr(settings, 'RAG_LARGE_FILE_THRESHOLD', 1 * 1024 * 1024)
+            
+            file_size = file_record.content.size
+            is_large_file = file_size > large_file_threshold
+            
+            if async_enabled and is_large_file:
+                # Queue as Celery task for large files
+                from files.tasks import index_file_for_rag
+                index_file_for_rag.delay(str(file_record.id))
+                logger.info(f"Queued async RAG indexing for file {file_record.id} ({file_size} bytes)")
+            else:
+                # Index synchronously for small files
+                from files.tasks import index_file_for_rag
+                result = index_file_for_rag(str(file_record.id))
+                logger.info(f"Completed sync RAG indexing for file {file_record.id}: {result}")
+                
+        except ImportError:
+            logger.warning("RAG tasks not available, skipping indexing")
+        except Exception as e:
+            logger.error(f"Failed to trigger RAG indexing for file {file_record.id}: {str(e)}")
+    
+    @staticmethod
+    def _trigger_rag_deletion(file_id: str) -> None:
+        """
+        Trigger RAG index cleanup for a deleted file.
+        
+        Deletion is synchronous to avoid ChromaDB multiprocessing issues.
+        
+        Args:
+            file_id: UUID string of the deleted file
+        """
+        try:
+            from uuid import UUID
+            from files.services.vector_store import VectorStoreService
+            
+            # Ensure VectorStore is initialized
+            try:
+                VectorStoreService.get_collection()
+            except RuntimeError:
+                persist_dir = getattr(
+                    settings,
+                    'CHROMADB_PERSIST_DIRECTORY',
+                    settings.BASE_DIR / 'data' / 'chromadb'
+                )
+                VectorStoreService.initialize(str(persist_dir))
+            
+            # Delete chunks synchronously
+            file_uuid = UUID(file_id)
+            chunks_deleted = VectorStoreService.delete_file_chunks(file_uuid)
+            logger.info(f"Deleted {chunks_deleted} RAG chunks for file {file_id}")
+            
+        except ImportError:
+            logger.warning("RAG services not available, skipping deletion")
+        except Exception as e:
+            logger.error(f"Failed to delete RAG chunks for file {file_id}: {str(e)}")
