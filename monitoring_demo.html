@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Hub - Monitoring Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .stat-card { transition: transform 0.2s; }
+        .stat-card:hover { transform: translateY(-2px); }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="min-h-screen">
+        <!-- Header -->
+        <header class="bg-white shadow">
+            <div class="max-w-7xl mx-auto py-6 px-4">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h1 class="text-3xl font-bold text-gray-900">File Hub - Monitoring Dashboard</h1>
+                        <p class="mt-1 text-sm text-gray-500">Real-time performance and storage metrics</p>
+                    </div>
+                    <div class="flex space-x-3">
+                        <label class="flex items-center space-x-2 text-sm">
+                            <input type="checkbox" id="autoRefresh" class="rounded border-gray-300 text-blue-600">
+                            <span>Auto-refresh (10s)</span>
+                        </label>
+                        <button onclick="loadAllData()" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                            Refresh
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="max-w-7xl mx-auto py-6 px-4">
+            <!-- Main Tabs: Storage vs Query Monitoring -->
+            <div class="mb-6">
+                <div class="border-b border-gray-200">
+                    <nav class="-mb-px flex space-x-8">
+                        <button onclick="switchMainTab('storage')" id="main-tab-storage" class="main-tab-button active py-4 px-1 border-b-2 border-blue-500 text-blue-600 font-medium text-lg">
+                            📊 Storage Monitoring
+                        </button>
+                        <button onclick="switchMainTab('query')" id="main-tab-query" class="main-tab-button py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 font-medium text-lg">
+                            🔍 Query Monitoring
+                        </button>
+                    </nav>
+                </div>
+            </div>
+
+            <!-- Storage Monitoring Content -->
+            <div id="storageContent" class="main-content">
+                <div class="mb-8">
+                    <h2 class="text-xl font-semibold text-gray-900 mb-4">Storage Statistics</h2>
+                    <div id="storageStats" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div class="animate-pulse bg-gray-200 h-24 rounded-lg"></div>
+                        <div class="animate-pulse bg-gray-200 h-24 rounded-lg"></div>
+                        <div class="animate-pulse bg-gray-200 h-24 rounded-lg"></div>
+                        <div class="animate-pulse bg-gray-200 h-24 rounded-lg"></div>
+                    </div>
+                </div>
+
+                <!-- Storage Details -->
+                <div class="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                    <h3 class="text-sm font-semibold text-gray-700 mb-3">Storage Details</h3>
+                    <div id="storageDetails" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="animate-pulse bg-gray-200 h-16 rounded"></div>
+                        <div class="animate-pulse bg-gray-200 h-16 rounded"></div>
+                        <div class="animate-pulse bg-gray-200 h-16 rounded"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Query Monitoring Content -->
+            <div id="queryContent" class="main-content hidden">
+                <!-- Query Summary -->
+                <div class="mb-8">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-semibold text-gray-900">Query Performance</h2>
+                        <select id="timePeriod" onchange="updateQueryPeriod()" class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">All Time</option>
+                            <option value="1">Last 1 Hour</option>
+                            <option value="6">Last 6 Hours</option>
+                            <option value="24">Last 24 Hours</option>
+                            <option value="168">Last 7 Days</option>
+                            <option value="720">Last 30 Days</option>
+                        </select>
+                    </div>
+                    <div id="querySummary" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="animate-pulse bg-gray-200 h-32 rounded-lg"></div>
+                        <div class="animate-pulse bg-gray-200 h-32 rounded-lg"></div>
+                        <div class="animate-pulse bg-gray-200 h-32 rounded-lg"></div>
+                    </div>
+                </div>
+
+                <!-- Query Log Tabs -->
+                <div class="mb-8">
+                    <div class="border-b border-gray-200 mb-4">
+                        <nav class="-mb-px flex space-x-8">
+                            <button onclick="switchQueryTab('recent')" id="tab-recent" class="tab-button active py-4 px-1 border-b-2 border-blue-500 text-blue-600 font-medium text-sm">
+                                Recent Queries
+                            </button>
+                            <button onclick="switchQueryTab('slow')" id="tab-slow" class="tab-button py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 font-medium text-sm">
+                                Slow Queries
+                            </button>
+                            <button onclick="switchQueryTab('failed')" id="tab-failed" class="tab-button py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 font-medium text-sm">
+                                Failed Queries
+                            </button>
+                        </nav>
+                    </div>
+                    <div id="tabContent"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000/api';
+        let autoRefreshInterval = null;
+        let currentMainTab = 'storage';
+        let currentQueryTab = 'recent';
+        let currentTimePeriod = '';
+
+        // Switch main tabs (Storage vs Query Monitoring)
+        function switchMainTab(tab) {
+            currentMainTab = tab;
+            
+            // Update tab buttons
+            document.querySelectorAll('.main-tab-button').forEach(btn => {
+                btn.classList.remove('active', 'border-blue-500', 'text-blue-600');
+                btn.classList.add('border-transparent', 'text-gray-500');
+            });
+            document.getElementById(`main-tab-${tab}`).classList.add('active', 'border-blue-500', 'text-blue-600');
+            document.getElementById(`main-tab-${tab}`).classList.remove('border-transparent', 'text-gray-500');
+            
+            // Show/hide content
+            document.getElementById('storageContent').classList.toggle('hidden', tab !== 'storage');
+            document.getElementById('queryContent').classList.toggle('hidden', tab !== 'query');
+            
+            // Load data for the active tab
+            if (tab === 'storage') {
+                loadStorageStats();
+            } else if (tab === 'query') {
+                loadQuerySummary();
+                switchQueryTab(currentQueryTab);
+            }
+        }
+
+        // Format bytes to human readable
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        // Format timestamp
+        function formatTimestamp(timestamp) {
+            return new Date(timestamp).toLocaleString();
+        }
+
+        // Get status color
+        function getStatusColor(statusCode) {
+            if (statusCode >= 200 && statusCode < 300) return 'text-green-600 bg-green-50';
+            if (statusCode >= 400 && statusCode < 500) return 'text-yellow-600 bg-yellow-50';
+            return 'text-red-600 bg-red-50';
+        }
+
+        // Get duration color
+        function getDurationColor(duration) {
+            if (duration < 100) return 'text-green-600';
+            if (duration < 500) return 'text-yellow-600';
+            return 'text-red-600';
+        }
+
+        // Load storage stats
+        async function loadStorageStats() {
+            try {
+                const response = await fetch(`${API_URL}/stats/storage/`);
+                const data = await response.json();
+                
+                document.getElementById('storageStats').innerHTML = `
+                    <div class="stat-card bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                        <p class="text-sm font-medium text-gray-600">Total Files</p>
+                        <p class="text-2xl font-bold text-gray-900">${data.total_files}</p>
+                    </div>
+                    <div class="stat-card bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                        <p class="text-sm font-medium text-gray-600">Unique Contents</p>
+                        <p class="text-2xl font-bold text-gray-900">${data.unique_contents}</p>
+                    </div>
+                    <div class="stat-card bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                        <p class="text-sm font-medium text-gray-600">Duplicates</p>
+                        <p class="text-2xl font-bold text-gray-900">${data.duplicate_count}</p>
+                    </div>
+                    <div class="stat-card bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                        <p class="text-sm font-medium text-gray-600">Storage Saved</p>
+                        <p class="text-2xl font-bold text-green-600">${data.savings_percent.toFixed(1)}%</p>
+                        <p class="text-xs text-gray-500">${formatBytes(data.bytes_saved)}</p>
+                    </div>
+                `;
+                
+                // Load storage details
+                document.getElementById('storageDetails').innerHTML = `
+                    <div>
+                        <p class="text-xs text-gray-500">Logical Size</p>
+                        <p class="text-lg font-semibold text-gray-900">${formatBytes(data.logical_size_bytes)}</p>
+                        <p class="text-xs text-gray-400">If no deduplication</p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500">Physical Size</p>
+                        <p class="text-lg font-semibold text-gray-900">${formatBytes(data.physical_size_bytes)}</p>
+                        <p class="text-xs text-gray-400">Actual storage used</p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500">Deduplication Ratio</p>
+                        <p class="text-lg font-semibold text-gray-900">${(data.deduplication_ratio * 100).toFixed(1)}%</p>
+                        <p class="text-xs text-gray-400">Unique / Total files</p>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Error loading storage stats:', error);
+                document.getElementById('storageStats').innerHTML = '<div class="col-span-4 text-red-600">Error loading storage stats</div>';
+            }
+        }
+
+        // Update query period
+        function updateQueryPeriod() {
+            currentTimePeriod = document.getElementById('timePeriod').value;
+            loadQuerySummary();
+            switchQueryTab(currentQueryTab);
+        }
+
+        // Load query summary
+        async function loadQuerySummary() {
+            try {
+                const url = currentTimePeriod 
+                    ? `${API_URL}/stats/queries/summary/?hours=${currentTimePeriod}`
+                    : `${API_URL}/stats/queries/summary/`;
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                const successRateClass = data.success_rate_percent >= 95 ? 'bg-green-100 text-green-800' :
+                                        data.success_rate_percent >= 90 ? 'bg-yellow-100 text-yellow-800' :
+                                        'bg-red-100 text-red-800';
+                
+                const periodText = data.period === 'all_time' ? 'All Time' : 
+                                  data.period.replace('last_', 'Last ').replace('_hours', ' Hours');
+                
+                document.getElementById('querySummary').innerHTML = `
+                    <div class="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                        <div class="flex justify-between items-center mb-3">
+                            <h3 class="text-sm font-medium text-gray-600">Success Rate</h3>
+                            <span class="px-2 py-1 rounded text-xs font-semibold ${successRateClass}">
+                                ${data.success_rate_percent >= 95 ? 'Excellent' : data.success_rate_percent >= 90 ? 'Good' : 'Poor'}
+                            </span>
+                        </div>
+                        <p class="text-3xl font-bold text-gray-900">${data.success_rate_percent.toFixed(1)}%</p>
+                        <p class="text-sm text-gray-500 mt-2">
+                            <span class="text-green-600 font-semibold">${data.successful_queries}</span> success / 
+                            <span class="text-red-600 font-semibold">${data.failed_queries}</span> failed
+                        </p>
+                        <p class="text-xs text-gray-400 mt-1">Total: ${data.total_queries} queries</p>
+                        <p class="text-xs text-blue-600 font-semibold mt-1">${periodText}</p>
+                    </div>
+                    <div class="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                        <h3 class="text-sm font-medium text-gray-600 mb-3">Response Times</h3>
+                        <div class="space-y-2">
+                            <div class="flex justify-between"><span class="text-xs text-gray-500">Average</span><span class="text-sm font-semibold">${data.avg_duration_ms.toFixed(1)} ms</span></div>
+                            <div class="flex justify-between"><span class="text-xs text-gray-500">P50</span><span class="text-sm font-semibold">${data.p50_duration_ms} ms</span></div>
+                            <div class="flex justify-between"><span class="text-xs text-gray-500">P95</span><span class="text-sm font-semibold">${data.p95_duration_ms} ms</span></div>
+                            <div class="flex justify-between"><span class="text-xs text-gray-500">P99</span><span class="text-sm font-semibold">${data.p99_duration_ms} ms</span></div>
+                            <div class="flex justify-between pt-2 border-t"><span class="text-xs text-gray-500">Slowest</span><span class="text-sm font-semibold ${getDurationColor(data.slowest_query_ms)}">${data.slowest_query_ms} ms</span></div>
+                        </div>
+                    </div>
+                    <div class="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                        <h3 class="text-sm font-medium text-gray-600 mb-3">Most Common</h3>
+                        <div><p class="text-xs text-gray-500 mb-1">Endpoint</p><p class="text-sm font-mono bg-gray-50 px-2 py-1 rounded break-all">${data.most_common_endpoint || 'N/A'}</p></div>
+                        ${data.most_common_error ? `<div class="mt-3"><p class="text-xs text-gray-500 mb-1">Error</p><p class="text-sm font-mono bg-red-50 text-red-800 px-2 py-1 rounded break-all">${data.most_common_error}</p></div>` : '<p class="text-sm text-gray-400 italic mt-3">No errors</p>'}
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Error loading query summary:', error);
+                document.getElementById('querySummary').innerHTML = '<div class="col-span-3 text-red-600">Error loading query summary</div>';
+            }
+        }
+
+        // Load query logs
+        async function loadQueryLogs(endpoint, title) {
+            try {
+                const response = await fetch(`${API_URL}/stats/queries/${endpoint}`);
+                const data = await response.json();
+                const logs = data.results || [];
+                
+                if (logs.length === 0) {
+                    document.getElementById('tabContent').innerHTML = `<div class="bg-white border rounded-lg p-8 text-center"><p class="text-gray-500">No ${title.toLowerCase()} found</p></div>`;
+                    return;
+                }
+                
+                let html = '<div class="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr>';
+                html += '<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Timestamp</th>';
+                html += '<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Method</th>';
+                html += '<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Endpoint</th>';
+                html += '<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>';
+                html += '<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Duration</th>';
+                html += '<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Results</th>';
+                html += '</tr></thead><tbody class="bg-white divide-y divide-gray-200">';
+                
+                logs.forEach(log => {
+                    html += `<tr class="hover:bg-gray-50">`;
+                    html += `<td class="px-4 py-3 text-sm text-gray-500">${formatTimestamp(log.timestamp)}</td>`;
+                    html += `<td class="px-4 py-3"><span class="px-2 py-1 text-xs font-semibold rounded bg-blue-50 text-blue-600">${log.method}</span></td>`;
+                    html += `<td class="px-4 py-3 text-sm font-mono">${log.endpoint}</td>`;
+                    html += `<td class="px-4 py-3"><span class="px-2 py-1 text-xs font-semibold rounded ${getStatusColor(log.status_code)}">${log.status_code}</span></td>`;
+                    html += `<td class="px-4 py-3"><span class="text-sm font-semibold ${getDurationColor(log.duration_ms)}">${log.duration_ms} ms</span></td>`;
+                    html += `<td class="px-4 py-3 text-sm text-gray-500">${log.result_count >= 0 ? log.result_count : 'N/A'}</td>`;
+                    html += `</tr>`;
+                });
+                
+                html += '</tbody></table></div>';
+                document.getElementById('tabContent').innerHTML = html;
+            } catch (error) {
+                console.error(`Error loading ${title}:`, error);
+                document.getElementById('tabContent').innerHTML = `<div class="text-red-600">Error loading ${title.toLowerCase()}</div>`;
+            }
+        }
+
+        // Switch query tabs (within Query Monitoring)
+        function switchQueryTab(tab) {
+            currentQueryTab = tab;
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                btn.classList.remove('active', 'border-blue-500', 'text-blue-600');
+                btn.classList.add('border-transparent', 'text-gray-500');
+            });
+            document.getElementById(`tab-${tab}`).classList.add('active', 'border-blue-500', 'text-blue-600');
+            document.getElementById(`tab-${tab}`).classList.remove('border-transparent', 'text-gray-500');
+            
+            if (tab === 'recent') loadQueryLogs('?limit=20', 'Recent Queries');
+            else if (tab === 'slow') loadQueryLogs('slow/?limit=20', 'Slow Queries');
+            else if (tab === 'failed') loadQueryLogs('failed/?limit=20', 'Failed Queries');
+        }
+
+        // Load all data
+        async function loadAllData() {
+            if (currentMainTab === 'storage') {
+                await loadStorageStats();
+            } else if (currentMainTab === 'query') {
+                await loadQuerySummary();
+                switchQueryTab(currentQueryTab);
+            }
+        }
+
+        // Auto-refresh toggle
+        document.getElementById('autoRefresh').addEventListener('change', (e) => {
+            if (e.target.checked) {
+                autoRefreshInterval = setInterval(loadAllData, 10000);
+            } else {
+                clearInterval(autoRefreshInterval);
+            }
+        });
+
+        // Initial load
+        loadAllData();
+    </script>
+</body>
+</html>

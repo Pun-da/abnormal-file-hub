@@ -7,4 +7,5 @@ router.register(r'files', FileViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('stats/', include('files.stats.urls')),
 ] 
