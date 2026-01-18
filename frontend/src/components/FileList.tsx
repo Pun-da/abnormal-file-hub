@@ -106,14 +106,24 @@ export const FileList: React.FC = () => {
                     <DocumentIcon className="h-8 w-8 text-gray-400" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">
-                      {file.original_filename}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {file.original_filename}
+                      </p>
+                      {file.is_duplicate && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">
+                          Duplicate
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm text-gray-500">
                       {file.file_type} • {(file.size / 1024).toFixed(2)} KB
                     </p>
                     <p className="text-sm text-gray-500">
                       Uploaded {new Date(file.uploaded_at).toLocaleString()}
+                    </p>
+                    <p className="text-xs text-gray-400 font-mono truncate" title={file.content_hash}>
+                      Hash: {file.content_hash?.substring(0, 16)}...
                     </p>
                   </div>
                   <div className="flex space-x-2">

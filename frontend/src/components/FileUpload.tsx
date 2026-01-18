@@ -31,6 +31,8 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onUploadSuccess }) => {
       setSelectedFile(event.target.files[0]);
       setError(null);
     }
+    // Reset input value to allow selecting the same file again
+    event.target.value = '';
   };
 
   const handleUpload = async () => {
