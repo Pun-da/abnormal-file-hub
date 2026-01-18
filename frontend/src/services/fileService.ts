@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { File as FileType } from '../types/file';
+import { File as FileType, FileFilterParams, PaginatedResponse } from '../types/file';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
 
@@ -16,8 +16,15 @@ export const fileService = {
     return response.data;
   },
 
-  async getFiles(): Promise<FileType[]> {
-    const response = await axios.get(`${API_URL}/files/`);
+  async getFiles(params?: FileFilterParams): Promise<PaginatedResponse<FileType>> {
+    // Clean up params - remove empty strings and undefined values
+    const cleanParams = params
+      ? Object.fromEntries(
+          Object.entries(params).filter(([_, v]) => v !== '' && v !== undefined && v !== null)
+        )
+      : {};
+    
+    const response = await axios.get(`${API_URL}/files/`, { params: cleanParams });
     return response.data;
   },
 

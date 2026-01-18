@@ -39,6 +39,7 @@ INSTALLED_APPS = [
   "django.contrib.messages",
   "django.contrib.staticfiles",
   "rest_framework",
+  "django_filters",
   "corsheaders",
   "contracts",  # Shared data contract (symlinked across worktrees)
   "files",
@@ -144,6 +145,14 @@ REST_FRAMEWORK = {
         'rest_framework.parsers.JSONParser',
         'rest_framework.parsers.MultiPartParser',
         'rest_framework.parsers.FormParser',
+    ],
+    # Pagination settings (per search_core_algorithm.md)
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.LimitOffsetPagination',
+    'PAGE_SIZE': 20,  # Default limit
+    # Filter backends
+    'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend',
+        'rest_framework.filters.OrderingFilter',
     ],
 }
 

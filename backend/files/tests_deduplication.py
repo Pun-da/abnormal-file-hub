@@ -473,7 +473,8 @@ class FileUploadAPITests(APITestCase):
         response = self.client.get('/api/files/')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 0)
+        self.assertEqual(response.data['count'], 0)
+        self.assertEqual(len(response.data['results']), 0)
     
     def test_list_files_returns_all_files(self):
         """GET /api/files/ should return all uploaded files."""
@@ -483,7 +484,8 @@ class FileUploadAPITests(APITestCase):
         response = self.client.get('/api/files/')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 2)
+        self.assertEqual(response.data['count'], 2)
+        self.assertEqual(len(response.data['results']), 2)
     
     # ===================
     # Delete API Tests
